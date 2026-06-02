@@ -138,6 +138,38 @@ Detects the presence of Eruda, a popular mobile debugging console.
 
 <h3>4. vConsole Checker</h3>
 
+## ⚠️ Warning
+
+The `vConsoleChecker` may generate false positives in certain environments.
+
+Applications built with frameworks such as **React Native** and **Flutter WebView** often wrap or override native console methods internally.
+
+Because `vConsoleChecker` performs console integrity checks using:
+
+```javascript
+Function.prototype.toString.call(console.log)
+```
+
+these framework-level modifications may be mistakenly identified as debugging tools.
+
+### Affected Environments
+
+- React Native
+- Flutter WebView
+- Hybrid mobile applications
+- Custom console wrappers
+
+### Recommendation
+
+If your application is running inside one of these environments, consider:
+
+- Disabling `vConsoleChecker`
+- Removing the console-hook detection logic
+- Implementing a platform-specific checker
+
+This behavior is expected and does not necessarily indicate that vConsole is installed.
+
+
 <p>
 Detects Tencent's vConsole debugging tool.
 </p>
