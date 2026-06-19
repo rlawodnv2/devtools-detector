@@ -18,7 +18,7 @@ class DevtoolsDetector {
 		if (!this._detectLoopStopped) return;
 
 		if (this._detectLoopDelay <= 0) {
-			this.setDetectDelay(500);
+			this._detectLoopDelay = 500;
 		}
 
 		this._detectLoopStopped = false;
@@ -29,7 +29,9 @@ class DevtoolsDetector {
 		this._detectLoopStopped = true;
 		this._isOpen = false;
 		this._openCount = 0;
+
 		clearTimeout(this._timer);
+		this._timer = null;
 	}
 
 	isLaunch() {
@@ -41,26 +43,38 @@ class DevtoolsDetector {
 	}
 
 	addListener(fn) {
-		this._listeners.push(fn);
+		if (typeof fn === "function") {
+			this._listeners.push(fn);
+		}
 	}
 
 	removeListener(fn) {
-		this._listeners = this._listeners.filter(l => l !== fn);
+		this._listeners = this._listeners.filter(listener => listener !== fn);
 	}
 
 	_broadcast(payload) {
 		this._listeners.forEach(listener => {
 			try {
 				listener(payload.isOpen, payload);
-			} catch (e) {}
+			} catch (e) {
+				// 개발 중 필요하면 사용
+				// console.error(e);
+			}
 		});
 	}
 
 	async _detectLoop() {
-		if (this._detectLoopStopped) return;
+		if (this._detectLoopStopped) {
+			return;
+		}
 
 		if (document.hidden) {
-			this._timer = setTimeout(() => this._detectLoop(), this._detectLoopDelay);
+			this._openCount = 0;
+
+			this._timer = setTimeout(() => {
+				this._detectLoop();
+			}, this._detectLoopDelay);
+
 			return;
 		}
 
@@ -68,33 +82,44 @@ class DevtoolsDetector {
 		let checkerName = "";
 
 		for (const checker of this._checkers) {
-			if (await checker.isEnable()) {
-				checkerName = checker.name;
+			if (!(await checker.isEnable())) {
+				continue;
+			}
 
-				if (await checker.isOpen()) {
-					detected = true;
-					break;
-				}
+			if (await checker.isOpen()) {
+				detected = true;
+				checkerName = checker.name;
+				break;
 			}
 		}
 
 		if (detected) {
 			this._openCount++;
 
-			if (this._openCount >= 3 && !this._isOpen) {
+			if (!this._isOpen && this._openCount >= 3) {
 				this._isOpen = true;
-				this._broadcast({ isOpen: true, checkerName });
+
+				this._broadcast({
+					isOpen: true,
+					checkerName
+				});
 			}
 		} else {
 			this._openCount = 0;
 
 			if (this._isOpen) {
 				this._isOpen = false;
-				this._broadcast({ isOpen: false, checkerName });
+
+				this._broadcast({
+					isOpen: false,
+					checkerName: ""
+				});
 			}
 		}
 
-		this._timer = setTimeout(() => this._detectLoop(), this._detectLoopDelay);
+		this._timer = setTimeout(() => {
+			this._detectLoop();
+		}, this._detectLoopDelay);
 	}
 }
 
@@ -105,7 +130,7 @@ const debuggerChecker = {
 		const start = performance.now();
 
 		try {
-			(function () {}).constructor("debugger")();
+			debugger;
 		} catch (e) {}
 
 		return performance.now() - start > 300;
@@ -121,23 +146,24 @@ const performanceChecker = {
 
 	async isOpen() {
 		const measure = () => {
-			const t0 = performance.now();
+			const start = performance.now();
 
 			for (let i = 0; i < 100000; i++) {
 				JSON.stringify({ index: i });
 			}
 
-			return performance.now() - t0;
+			return performance.now() - start;
 		};
 
-		const base = measure();
-		const spike = measure();
+		const first = measure();
+		const second = measure();
 
-		const max = Math.max(base, spike);
+		if (first <= 0) {
+			return false;
+		}
 
-		if (!base) return false;
-
-		return spike > 25 * base;
+		// 참고용 신호로만 사용
+		return second > first * 10 && (second - first) > 100;
 	},
 
 	async isEnable() {
@@ -149,8 +175,10 @@ const erudaChecker = {
 	name: "eruda-checker",
 
 	async isOpen() {
-		return typeof eruda !== "undefined" &&
-					 eruda?._devTools?._isShow === true;
+		return (
+			typeof window.eruda !== "undefined" &&
+			window.eruda?._devTools?._isShow === true
+		);
 	},
 
 	async isEnable() {
@@ -160,26 +188,58 @@ const erudaChecker = {
 
 const vConsoleChecker = {
 	name: "vConsole-checker",
-	
+
 	async isOpen() {
-		
-		if(typeof VConsole !== "undefined") return true;
-		
-		if(window.VConsole || window.vConsole) return true;
-		
-		if(document.getElementById('__vconsole')) return true;
-		
-		if(document.documentElement.classList.contains('vc-toggle')) return true;
-		
-		const scripts = [...document.scripts];
-		const found = scripts.some(s => s.src.includes("vconsole"));
-		if(found) return true;
-		
+		if (typeof VConsole !== "undefined") {
+			return true;
+		}
+
+		if (window.VConsole || window.vConsole) {
+			return true;
+		}
+
+		if (document.getElementById("__vconsole")) {
+			return true;
+		}
+
+		const scripts = Array.from(document.scripts);
+
+		if (scripts.some(script => script.src.includes("vconsole"))) {
+			return true;
+		}
+		/*
+		네이티브 코드 flutter vue react 오탐 가능.
 		const nativeToString = Function.prototype.toString;
-		if(!nativeToString.call(console.log).includes('[native code]')) return true;
+		if (
+			!nativeToString
+				.call(console.log)
+				.includes("[native code]")
+		) {
+			return true;
+		}
+		*/
+
+		return false;
 	},
-	
+
 	async isEnable() {
 		return true;
 	}
 };
+
+// 사용 예시
+/*const detector = new DevtoolsDetector({
+	detectDelay: 500,
+	checkers: [
+		debuggerChecker,
+		performanceChecker,
+		erudaChecker,
+		vConsoleChecker
+	]
+});
+
+detector.addListener((isOpen, payload) => {
+	console.log("DevTools:", isOpen ? "OPEN" : "CLOSE", payload);*/
+});
+
+detector.launch();
