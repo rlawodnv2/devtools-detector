@@ -239,7 +239,7 @@ const vConsoleChecker = {
 });
 
 detector.addListener((isOpen, payload) => {
-	console.log("DevTools:", isOpen ? "OPEN" : "CLOSE", payload);*/
+	console.log("DevTools:", isOpen ? "OPEN" : "CLOSE", payload);
 });
 
-detector.launch();
+detector.launch();*/
