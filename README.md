@@ -138,7 +138,7 @@ Detects the presence of Eruda, a popular mobile debugging console.
 
 <h3>4. vConsole Checker</h3>
 
-## ⚠️ Warning
+## Warning
 
 The `vConsoleChecker` may generate false positives in certain environments.
 
